@@ -75,9 +75,12 @@ export default function Photobooth() {
   };
 
   // 💾 Download Photo Strip
-  const downloadStrip = () => {
+  const downloadStrip = async () => {
     const canvas = stripCanvasRef.current;
     if (!canvas || photos.length < 3) return;
+
+    // Tunggu font siap agar teks tidak berantakan
+    await document.fonts.ready;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -91,8 +94,10 @@ export default function Photobooth() {
     const borderColor = "#fecdd3"; // rose-200
     const textColor = "#e11d48"; // rose-600
     const padding = 100;
-    const gap = 50;
+    const gap = 40;
     const borderRadius = 40;
+    const photoWidth = canvas.width - (padding * 2.5);
+    const photoHeight = 460; // Fixed height to fit 3 photos + header + footer
 
     // Background
     ctx.fillStyle = bgColor;
@@ -100,7 +105,7 @@ export default function Photobooth() {
 
     // Border Luar (Aesthetic frame)
     ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 20;
+    ctx.lineWidth = 24;
     ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
 
     const drawPhoto = (url: string, index: number) => {
@@ -108,13 +113,11 @@ export default function Photobooth() {
         const img = new Image();
         img.src = url;
         img.onload = () => {
-          // Perkecil sedikit agar ruang bawah lebih luas
-          const photoWidth = canvas.width - (padding * 2.5);
-          const photoHeight = (img.height / img.width) * photoWidth;
-          const y = 200 + (index * (photoHeight + gap));
+          const y = 220 + (index * (photoHeight + gap));
 
           ctx.save();
 
+          // Clip for Rounded Corners
           ctx.beginPath();
           ctx.moveTo(padding * 1.25 + borderRadius, y);
           ctx.lineTo(padding * 1.25 + photoWidth - borderRadius, y);
@@ -128,19 +131,48 @@ export default function Photobooth() {
           ctx.closePath();
           ctx.clip();
 
-          // Draw Image
-          ctx.drawImage(img, padding * 1.25, y, photoWidth, photoHeight);
+          // Center Crop Logic (Object-fit: cover equivalent)
+          const imgRatio = img.width / img.height;
+          const targetRatio = photoWidth / photoHeight;
+          let sx, sy, sWidth, sHeight;
+
+          if (imgRatio > targetRatio) {
+            sHeight = img.height;
+            sWidth = img.height * targetRatio;
+            sx = (img.width - sWidth) / 2;
+            sy = 0;
+          } else {
+            sWidth = img.width;
+            sHeight = img.width / targetRatio;
+            sx = 0;
+            sy = (img.height - sHeight) / 2;
+          }
+
+          ctx.drawImage(img, sx, sy, sWidth, sHeight, padding * 1.25, y, photoWidth, photoHeight);
           ctx.restore();
 
-          // Inner Border untuk Foto
+          // White Border for Photo
           ctx.strokeStyle = "white";
-          ctx.lineWidth = 8;
+          ctx.lineWidth = 12;
+          // Re-draw path for stroke
+          ctx.beginPath();
+          ctx.moveTo(padding * 1.25 + borderRadius, y);
+          ctx.lineTo(padding * 1.25 + photoWidth - borderRadius, y);
+          ctx.quadraticCurveTo(padding * 1.25 + photoWidth, y, padding * 1.25 + photoWidth, y + borderRadius);
+          ctx.lineTo(padding * 1.25 + photoWidth, y + photoHeight - borderRadius);
+          ctx.quadraticCurveTo(padding * 1.25 + photoWidth, y + photoHeight, padding * 1.25 + photoWidth - borderRadius, y + photoHeight);
+          ctx.lineTo(padding * 1.25 + borderRadius, y + photoHeight);
+          ctx.quadraticCurveTo(padding * 1.25, y + photoHeight, padding * 1.25, y + photoHeight - borderRadius);
+          ctx.lineTo(padding * 1.25, y + borderRadius);
+          ctx.quadraticCurveTo(padding * 1.25, y, padding * 1.25 + borderRadius, y);
+          ctx.closePath();
           ctx.stroke();
 
-          // Ornamen Hati (diposisikan ulang)
-          ctx.font = "30px serif";
-          ctx.fillText("❤️", padding * 1.25 - 40, y + 40);
-          ctx.fillText("❤️", padding * 1.25 + photoWidth + 10, y + photoHeight - 10);
+          // Ornamen Hati
+          ctx.font = "40px serif";
+          ctx.fillStyle = "#e11d48";
+          ctx.fillText("❤️", padding * 1.25 - 45, y + 40);
+          ctx.fillText("❤️", padding * 1.25 + photoWidth + 5, y + photoHeight - 5);
 
           resolve();
         };
@@ -148,48 +180,56 @@ export default function Photobooth() {
     }
 
     // Render semua foto secara berurutan
-    Promise.all(photos.map((url, i) => drawPhoto(url, i))).then(() => {
-      // Header Text
-      ctx.fillStyle = textColor;
-      ctx.font = "italic 35px serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Our Beautiful Moments", canvas.width / 2, 130);
+    await Promise.all(photos.map((url, i) => drawPhoto(url, i)));
 
-      // Footer (Dinaikkan sedikit agar gap tidak terlalu jauh)
-      ctx.font = "30px sans-serif";
-      ctx.fillStyle = "#fb7185";
-      ctx.fillText("5 Mei 2026", canvas.width / 2, canvas.height - 160);
+    // Header Text
+    ctx.fillStyle = textColor;
+    ctx.font = "italic bold 40px serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Our Beautiful Moments", canvas.width / 2, 140);
 
-      ctx.font = "italic 28px serif";
-      ctx.fillText("Made with love for you", canvas.width / 2, canvas.height - 110);
+    // Footer
+    const footerY = canvas.height - 140;
+    ctx.font = "bold 32px sans-serif";
+    ctx.fillStyle = "#fb7185";
+    ctx.fillText("5 Mei 2026", canvas.width / 2, footerY);
 
-      // Generate Image
-      const dataUrl = canvas.toDataURL("image/png");
+    ctx.font = "italic 30px serif";
+    ctx.fillStyle = textColor;
+    ctx.fillText("Made with love for you", canvas.width / 2, footerY + 50);
 
-      // 1. Mobile Friendly (iPhone/Safari): Gunakan Blob URL agar lebih stabil
-      fetch(dataUrl)
-        .then(res => res.blob())
-        .then(blob => {
-          const url = URL.createObjectURL(blob);
-          const newTab = window.open(url, '_blank');
-          
-          if (!newTab) {
-            // Jika popup diblokir, arahkan langsung (opsional) atau beri peringatan
-            alert("Mohon izinkan popup untuk menyimpan foto ❤️");
-          }
-        });
+    // Generate Image
+    const dataUrl = canvas.toDataURL("image/png", 1.0);
 
-      // 2. Desktop/Android: Tetap jalankan trigger download otomatis
+    // 1. Mobile Friendly (iPhone/Safari)
+    try {
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      // Desktop/Android: Auto-download
       const link = document.createElement("a");
-      link.download = `aymar-photostrip-special.png`;
+      link.download = `aymar-photostrip-${Date.now()}.png`;
+      link.href = url;
+      link.click();
+
+      // Mobile Safari: Open in new tab as fallback
+      if (/Safari/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent)) {
+        window.open(url, '_blank');
+      }
+    } catch (e) {
+      console.error("Download error:", e);
+      // Fallback
+      const link = document.createElement("a");
+      link.download = `aymar-photostrip.png`;
       link.href = dataUrl;
       link.click();
-    });
+    }
   };
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-pink-100 via-rose-100 to-pink-200 p-4 md:p-8 font-sans">
-      
+
       {/* BACK BUTTON */}
       <Link href="/letter" className="fixed top-6 left-6 z-[100]">
         <button className="bg-white/30 backdrop-blur-md border border-white/50 p-3 rounded-full shadow-lg hover:bg-white/50 transition-all duration-300 group flex items-center gap-2 pr-5">
