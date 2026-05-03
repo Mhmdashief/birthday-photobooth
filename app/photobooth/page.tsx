@@ -163,10 +163,26 @@ export default function Photobooth() {
       ctx.font = "italic 28px serif";
       ctx.fillText("Made with love for you", canvas.width / 2, canvas.height - 110);
 
-      // Trigger Download
+      // Generate Image
+      const dataUrl = canvas.toDataURL("image/png");
+
+      // 1. Mobile Friendly (iPhone/Safari): Gunakan Blob URL agar lebih stabil
+      fetch(dataUrl)
+        .then(res => res.blob())
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          const newTab = window.open(url, '_blank');
+          
+          if (!newTab) {
+            // Jika popup diblokir, arahkan langsung (opsional) atau beri peringatan
+            alert("Mohon izinkan popup untuk menyimpan foto ❤️");
+          }
+        });
+
+      // 2. Desktop/Android: Tetap jalankan trigger download otomatis
       const link = document.createElement("a");
       link.download = `aymar-photostrip-special.png`;
-      link.href = canvas.toDataURL("image/png");
+      link.href = dataUrl;
       link.click();
     });
   };
