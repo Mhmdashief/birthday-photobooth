@@ -93,11 +93,11 @@ export default function Photobooth() {
     const bgColor = "#fff1f2"; // rose-50
     const borderColor = "#fecdd3"; // rose-200
     const textColor = "#e11d48"; // rose-600
-    const padding = 100;
-    const gap = 40;
+    const padding = 80; // Reduced padding to make photos wider
+    const gap = 30; // Reduced gap to make room for taller photos
     const borderRadius = 40;
     const photoWidth = canvas.width - (padding * 2.5);
-    const photoHeight = 460; // Fixed height to fit 3 photos + header + footer
+    const photoHeight = 500; // Increased height (from 460) to make it less "narrow"
 
     // Background
     ctx.fillStyle = bgColor;
@@ -105,7 +105,7 @@ export default function Photobooth() {
 
     // Border Luar (Aesthetic frame)
     ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 24;
+    ctx.lineWidth = 20;
     ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
 
     const drawPhoto = (url: string, index: number) => {
@@ -113,7 +113,7 @@ export default function Photobooth() {
         const img = new Image();
         img.src = url;
         img.onload = () => {
-          const y = 220 + (index * (photoHeight + gap));
+          const y = 200 + (index * (photoHeight + gap)); // Started slightly higher (from 220)
 
           ctx.save();
 
@@ -154,7 +154,6 @@ export default function Photobooth() {
           // White Border for Photo
           ctx.strokeStyle = "white";
           ctx.lineWidth = 12;
-          // Re-draw path for stroke
           ctx.beginPath();
           ctx.moveTo(padding * 1.25 + borderRadius, y);
           ctx.lineTo(padding * 1.25 + photoWidth - borderRadius, y);
@@ -186,17 +185,17 @@ export default function Photobooth() {
     ctx.fillStyle = textColor;
     ctx.font = "italic bold 40px serif";
     ctx.textAlign = "center";
-    ctx.fillText("Our Beautiful Moments", canvas.width / 2, 140);
+    ctx.fillText("Our Beautiful Moments", canvas.width / 2, 130);
 
     // Footer
-    const footerY = canvas.height - 140;
+    const footerY = canvas.height - 110;
     ctx.font = "bold 32px sans-serif";
     ctx.fillStyle = "#fb7185";
-    ctx.fillText("5 Mei 2026", canvas.width / 2, footerY);
+    ctx.fillText("5 Mei 2026", canvas.width / 2, footerY - 40);
 
     ctx.font = "italic 30px serif";
     ctx.fillStyle = textColor;
-    ctx.fillText("Made with love for you", canvas.width / 2, footerY + 50);
+    ctx.fillText("Made with love for you", canvas.width / 2, footerY);
 
     // Generate Image
     const dataUrl = canvas.toDataURL("image/png", 1.0);
