@@ -212,7 +212,7 @@ export default function Photobooth() {
     ctx.fillStyle = textColor;
     ctx.font = "italic bold 45px serif";
     ctx.textAlign = "center";
-    ctx.fillText("Our Beautiful Moments", canvas.width / 2, 105);
+    ctx.fillText("Your Beautiful Moments", canvas.width / 2, 105);
 
     const drawPhoto = (
       url: string,
