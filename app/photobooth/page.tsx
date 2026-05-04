@@ -14,13 +14,21 @@ export default function Photobooth() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [showFlash, setShowFlash] = useState(false);
 
-  // 🎥 Start camera
+  const isMobile =
+    typeof window !== "undefined" &&
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
   useEffect(() => {
     const startCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
+          video: {
+            width: 1280,
+            height: 720,
+            facingMode: "user",
+          },
         });
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -28,233 +36,342 @@ export default function Photobooth() {
         console.error("Error accessing camera:", err);
       }
     };
+
     startCamera();
+
+    return () => {
+      const stream = videoRef.current?.srcObject as MediaStream | null;
+      stream?.getTracks().forEach((track) => track.stop());
+    };
   }, []);
 
-  // 📸 Take single photo
+  const wait = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
   const takePhoto = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
     const ctx = canvas.getContext("2d");
-    // Gunakan resolusi asli video agar tidak terpotong
+    if (!ctx) return;
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    if (ctx) {
-      // Mirroring
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    }
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
 
     const dataUrl = canvas.toDataURL("image/png");
     setPhotos((prev) => [...prev, dataUrl]);
 
-    // Flash effect
     setShowFlash(true);
-    setTimeout(() => setShowFlash(false), 150);
+    setTimeout(() => setShowFlash(false), 180);
   };
 
-  // ⏱️ Start capture sequence
   const startCapture = async () => {
     setPhotos([]);
     setIsCapturing(true);
 
-    for (let i = 0; i < 3; i++) { // 3 foto untuk IG Story
+    const totalShots = isMobile ? 1 : 3;
+
+    for (let i = 0; i < totalShots; i++) {
       for (let j = 3; j > 0; j--) {
         setCountdown(j);
-        await new Promise((r) => setTimeout(r, 1000));
+        await wait(1000);
       }
+
       setCountdown(null);
       takePhoto();
-      await new Promise((r) => setTimeout(r, 800));
+
+      // cinematic pause
+      await wait(900);
     }
+
     setIsCapturing(false);
   };
 
-  // 💾 Download Photo Strip
+  const roundedRect = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number
+  ) => {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(
+      x + width,
+      y + height,
+      x + width - radius,
+      y + height
+    );
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  };
+
+  const drawFitImage = (
+    ctx: CanvasRenderingContext2D,
+    img: HTMLImageElement,
+    x: number,
+    y: number,
+    boxWidth: number,
+    boxHeight: number,
+    mobileMode = false
+  ) => {
+    const imgRatio = img.width / img.height;
+    const boxRatio = boxWidth / boxHeight;
+
+    let drawWidth;
+    let drawHeight;
+    let drawX;
+    let drawY;
+
+    if (mobileMode) {
+      // portrait card → smart fit
+      if (imgRatio > boxRatio) {
+        drawWidth = boxWidth;
+        drawHeight = boxWidth / imgRatio;
+        drawX = x;
+        drawY = y + (boxHeight - drawHeight) / 2;
+      } else {
+        drawHeight = boxHeight;
+        drawWidth = boxHeight * imgRatio;
+        drawX = x + (boxWidth - drawWidth) / 2;
+        drawY = y;
+      }
+    } else {
+      // desktop → cover ringan
+      let sx, sy, sWidth, sHeight;
+
+      if (imgRatio > boxRatio) {
+        sHeight = img.height;
+        sWidth = img.height * boxRatio;
+        sx = (img.width - sWidth) / 2;
+        sy = 0;
+      } else {
+        sWidth = img.width;
+        sHeight = img.width / boxRatio;
+        sx = 0;
+        sy = (img.height - sHeight) / 2;
+      }
+
+      ctx.drawImage(
+        img,
+        sx,
+        sy,
+        sWidth,
+        sHeight,
+        x,
+        y,
+        boxWidth,
+        boxHeight
+      );
+      return;
+    }
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x, y, boxWidth, boxHeight);
+    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+  };
+
   const downloadStrip = async () => {
     const canvas = stripCanvasRef.current;
-    if (!canvas || photos.length < 3) return;
+    if (!canvas || photos.length === 0) return;
 
-    // Tunggu font siap agar teks tidak berantakan
     await document.fonts.ready;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Ukuran Standar IG Story (1080 x 1920)
     canvas.width = 1080;
     canvas.height = 1920;
 
-    // Design Tokens
-    const bgColor = "#fff1f2"; // rose-50
-    const borderColor = "#fecdd3"; // rose-200
-    const textColor = "#e11d48"; // rose-600
-    const padding = 80; // Reduced padding to make photos wider
-    const gap = 30; // Reduced gap to make room for taller photos
-    const borderRadius = 40;
-    const photoWidth = canvas.width - (padding * 2.5);
-    const photoHeight = 500; // Increased height (from 460) to make it less "narrow"
+    const bgColor = "#fff1f2";
+    const borderColor = "#fecdd3";
+    const textColor = "#e11d48";
 
-    // Background
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Border Luar (Aesthetic frame)
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = 20;
     ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
 
-    const drawPhoto = (url: string, index: number) => {
-      return new Promise<void>((resolve) => {
+    // header
+    ctx.fillStyle = textColor;
+    ctx.font = "italic bold 45px serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Our Beautiful Moments", canvas.width / 2, 105);
+
+    const drawPhoto = (
+      url: string,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      mobileMode = false
+    ) =>
+      new Promise<void>((resolve) => {
         const img = new Image();
         img.src = url;
         img.onload = () => {
-          const y = 200 + (index * (photoHeight + gap)); // Started slightly higher (from 220)
-
           ctx.save();
 
-          // Clip for Rounded Corners
-          ctx.beginPath();
-          ctx.moveTo(padding * 1.25 + borderRadius, y);
-          ctx.lineTo(padding * 1.25 + photoWidth - borderRadius, y);
-          ctx.quadraticCurveTo(padding * 1.25 + photoWidth, y, padding * 1.25 + photoWidth, y + borderRadius);
-          ctx.lineTo(padding * 1.25 + photoWidth, y + photoHeight - borderRadius);
-          ctx.quadraticCurveTo(padding * 1.25 + photoWidth, y + photoHeight, padding * 1.25 + photoWidth - borderRadius, y + photoHeight);
-          ctx.lineTo(padding * 1.25 + borderRadius, y + photoHeight);
-          ctx.quadraticCurveTo(padding * 1.25, y + photoHeight, padding * 1.25, y + photoHeight - borderRadius);
-          ctx.lineTo(padding * 1.25, y + borderRadius);
-          ctx.quadraticCurveTo(padding * 1.25, y, padding * 1.25 + borderRadius, y);
-          ctx.closePath();
+          roundedRect(ctx, x, y, w, h, 40);
           ctx.clip();
 
-          // Center Crop Logic (Object-fit: cover equivalent)
-          const imgRatio = img.width / img.height;
-          const targetRatio = photoWidth / photoHeight;
-          let sx, sy, sWidth, sHeight;
+          drawFitImage(ctx, img, x, y, w, h, mobileMode);
 
-          if (imgRatio > targetRatio) {
-            sHeight = img.height;
-            sWidth = img.height * targetRatio;
-            sx = (img.width - sWidth) / 2;
-            sy = 0;
-          } else {
-            sWidth = img.width;
-            sHeight = img.width / targetRatio;
-            sx = 0;
-            sy = (img.height - sHeight) / 2;
-          }
-
-          ctx.drawImage(img, sx, sy, sWidth, sHeight, padding * 1.25, y, photoWidth, photoHeight);
           ctx.restore();
 
-          // White Border for Photo
+          roundedRect(ctx, x, y, w, h, 40);
           ctx.strokeStyle = "white";
           ctx.lineWidth = 12;
-          ctx.beginPath();
-          ctx.moveTo(padding * 1.25 + borderRadius, y);
-          ctx.lineTo(padding * 1.25 + photoWidth - borderRadius, y);
-          ctx.quadraticCurveTo(padding * 1.25 + photoWidth, y, padding * 1.25 + photoWidth, y + borderRadius);
-          ctx.lineTo(padding * 1.25 + photoWidth, y + photoHeight - borderRadius);
-          ctx.quadraticCurveTo(padding * 1.25 + photoWidth, y + photoHeight, padding * 1.25 + photoWidth - borderRadius, y + photoHeight);
-          ctx.lineTo(padding * 1.25 + borderRadius, y + photoHeight);
-          ctx.quadraticCurveTo(padding * 1.25, y + photoHeight, padding * 1.25, y + photoHeight - borderRadius);
-          ctx.lineTo(padding * 1.25, y + borderRadius);
-          ctx.quadraticCurveTo(padding * 1.25, y, padding * 1.25 + borderRadius, y);
-          ctx.closePath();
           ctx.stroke();
 
-          // Ornamen Hati
-          ctx.font = "40px serif";
-          ctx.fillStyle = "#e11d48";
-          ctx.fillText("❤️", padding * 1.25 - 45, y + 40);
-          ctx.fillText("❤️", padding * 1.25 + photoWidth + 5, y + photoHeight - 5);
+          ctx.font = mobileMode ? "60px serif" : "40px serif";
+          ctx.fillStyle = textColor;
+          ctx.fillText("❤️", x - 42, y + 38);
+          ctx.fillText("❤️", x + w + 12, y + h - 6);
 
           resolve();
         };
       });
+
+    if (isMobile) {
+      // ===== MOBILE : ROMANTIC POLAROID STYLE =====
+      const cardX = 90;
+      const cardY = 200;
+      const cardW = 900;
+      const cardH = 1400;
+
+      // Draw Polaroid Card
+      ctx.save();
+      ctx.fillStyle = "white";
+      ctx.shadowColor = "rgba(0,0,0,0.1)";
+      ctx.shadowBlur = 30;
+      ctx.shadowOffsetY = 15;
+      roundedRect(ctx, cardX, cardY, cardW, cardH, 20);
+      ctx.fill();
+      ctx.restore();
+
+      // Photo inside Polaroid
+      const pPadding = 60;
+      const pW = cardW - pPadding * 2;
+      const pH = 1000;
+      const pX = cardX + pPadding;
+      const pY = cardY + pPadding;
+
+      await drawPhoto(photos[0], pX, pY, pW, pH, true);
+
+      // Romantic Note on Polaroid
+      ctx.fillStyle = textColor;
+      ctx.font = "italic 48px serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Special Moments with You", canvas.width / 2, cardY + pH + 180);
+
+      // Extra Decorative Hearts
+      const drawHeart = (x: number, y: number, size: string) => {
+        ctx.font = size;
+        ctx.fillText("💖", x, y);
+      };
+      drawHeart(150, 250, "60px serif");
+      drawHeart(930, 350, "50px serif");
+      drawHeart(120, 1550, "70px serif");
+      drawHeart(950, 1500, "55px serif");
+    } else {
+      // ===== DESKTOP : 3 STRIP =====
+      const photoWidth = 840;
+      const photoHeight = 480;
+      const gap = 60;
+      const startY = 180;
+      const x = (canvas.width - photoWidth) / 2;
+
+      await Promise.all(
+        photos.slice(0, 3).map((url, i) =>
+          drawPhoto(
+            url,
+            x,
+            startY + i * (photoHeight + gap),
+            photoWidth,
+            photoHeight
+          )
+        )
+      );
     }
 
-    // Render semua foto secara berurutan
-    await Promise.all(photos.map((url, i) => drawPhoto(url, i)));
+    // footer
+    const dateY = 1780;
+    const captionY = 1835;
 
-    // Header Text
-    ctx.fillStyle = textColor;
-    ctx.font = "italic bold 40px serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Our Beautiful Moments", canvas.width / 2, 130);
-
-    // Footer
-    const footerY = canvas.height - 110;
-    ctx.font = "bold 32px sans-serif";
+    ctx.font = "bold 34px sans-serif";
     ctx.fillStyle = "#fb7185";
-    ctx.fillText("5 Mei 2026", canvas.width / 2, footerY - 40);
+    ctx.fillText("5 Mei 2026", canvas.width / 2, dateY);
 
-    ctx.font = "italic 30px serif";
+    ctx.font = "italic 32px serif";
     ctx.fillStyle = textColor;
-    ctx.fillText("Made with love for you", canvas.width / 2, footerY);
+    ctx.fillText("Made with love for you", canvas.width / 2, captionY);
 
-    // Generate Image
-    const dataUrl = canvas.toDataURL("image/png", 1.0);
 
-    // 1. Mobile Friendly (iPhone/Safari)
+    const dataUrl = canvas.toDataURL("image/png", 1);
+
     try {
       const res = await fetch(dataUrl);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
-      // Desktop/Android: Auto-download
       const link = document.createElement("a");
       link.download = `aymar-photostrip-${Date.now()}.png`;
       link.href = url;
       link.click();
 
-      // Mobile Safari: Open in new tab as fallback
       if (/Safari/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent)) {
-        window.open(url, '_blank');
+        window.open(url, "_blank");
       }
-    } catch (e) {
-      console.error("Download error:", e);
-      // Fallback
-      const link = document.createElement("a");
-      link.download = `aymar-photostrip.png`;
-      link.href = dataUrl;
-      link.click();
+    } catch (err) {
+      console.error(err);
     }
   };
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-pink-100 via-rose-100 to-pink-200 p-4 md:p-8 font-sans">
-
-      {/* BACK BUTTON */}
       <Link href="/letter" className="fixed top-6 left-6 z-[100]">
         <button className="bg-white/30 backdrop-blur-md border border-white/50 p-3 rounded-full shadow-lg hover:bg-white/50 transition-all duration-300 group flex items-center gap-2 pr-5">
           <ArrowLeft className="w-6 h-6 text-rose-600" />
-          <span className="text-rose-600 font-bold text-sm hidden md:block">Kembali</span>
+          <span className="text-rose-600 font-bold text-sm hidden md:block">
+            Kembali
+          </span>
         </button>
       </Link>
 
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center py-10">
-
-        {/* Kiri: Kamera */}
         <div className="flex flex-col items-center space-y-6">
           <div className="relative group w-full max-w-[320px] md:max-w-[400px]">
             <div className="absolute -inset-1 bg-gradient-to-r from-pink-400 to-rose-400 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+
             <div className="relative bg-white p-2 md:p-3 rounded-2xl shadow-2xl">
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
-                className="rounded-xl w-full aspect-[3/4] object-cover scale-x-[-1]"
+                className="rounded-xl w-full aspect-[3/2] object-cover scale-x-[-1]"
               />
 
-              {/* Flash Overlay */}
-              {showFlash && <div className="absolute inset-0 bg-white animate-pulse z-50 rounded-xl"></div>}
+              {showFlash && (
+                <div className="absolute inset-0 bg-white animate-pulse z-50 rounded-xl" />
+              )}
 
-              {/* Countdown Overlay */}
               {countdown && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-white text-6xl md:text-8xl font-black drop-shadow-2xl animate-ping">
@@ -278,7 +395,6 @@ export default function Photobooth() {
           </button>
         </div>
 
-        {/* Kanan: Hasil & Preview */}
         <div className="flex flex-col items-center w-full">
           <div className="bg-white/50 backdrop-blur-md p-6 rounded-[2rem] border border-white/50 shadow-xl w-full min-h-[400px] md:min-h-[500px] flex flex-col items-center">
             <h2 className="text-rose-600 font-serif italic text-xl md:text-2xl mb-6 flex items-center gap-2">
@@ -294,33 +410,44 @@ export default function Photobooth() {
               </div>
             ) : (
               <div className="w-full flex flex-col items-center">
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  {photos.map((p, i) => (
-                    <div key={i} className="relative group">
-                      <img src={p} className="w-full rounded-lg shadow-md border-2 border-white" alt={`Captured ${i}`} />
-                      <div className="absolute top-1 right-1 bg-rose-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center shadow-sm">
-                        {i + 1}
+                {isMobile ? (
+                  <div className="w-full mb-6">
+                    <img
+                      src={photos[0]}
+                      alt="Captured"
+                      className="w-full max-h-[520px] object-cover rounded-2xl shadow-xl border-4 border-white"
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 mb-6 w-full">
+                    {photos.map((p, i) => (
+                      <div key={i} className="relative">
+                        <img
+                          src={p}
+                          alt={`Captured ${i}`}
+                          className="w-full rounded-lg shadow-md border-2 border-white"
+                        />
+                        <div className="absolute top-1 right-1 bg-rose-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center shadow-sm">
+                          {i + 1}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-
-                {photos.length >= 3 && (
-                  <button
-                    onClick={downloadStrip}
-                    className="w-full flex items-center justify-center gap-2 bg-white text-rose-500 border-2 border-rose-500 px-4 md:px-6 py-3 rounded-xl font-bold hover:bg-rose-500 hover:text-white transition-all duration-300 shadow-md text-sm md:text-base"
-                  >
-                    <Download className="w-5 h-5" /> Download Photo Strip
-                  </button>
+                    ))}
+                  </div>
                 )}
+
+                <button
+                  onClick={downloadStrip}
+                  className="w-full flex items-center justify-center gap-2 bg-white text-rose-500 border-2 border-rose-500 px-4 md:px-6 py-3 rounded-xl font-bold hover:bg-rose-500 hover:text-white transition-all duration-300 shadow-md text-sm md:text-base"
+                >
+                  <Download className="w-5 h-5" />
+                  Download Photo Strip
+                </button>
               </div>
             )}
           </div>
         </div>
-
       </div>
 
-      {/* Hidden Elements */}
       <canvas ref={canvasRef} className="hidden" />
       <canvas ref={stripCanvasRef} className="hidden" />
     </main>
