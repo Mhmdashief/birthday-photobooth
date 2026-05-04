@@ -250,46 +250,75 @@ export default function Photobooth() {
       });
 
     if (isMobile) {
-      // ===== MOBILE : ROMANTIC POLAROID STYLE =====
-      const cardX = 90;
-      const cardY = 200;
+      // ===== MOBILE : ROMANTIC DESIGNED POLAROID =====
       const cardW = 900;
-      const cardH = 1400;
+      const cardX = (canvas.width - cardW) / 2;
+      const cardY = 220;
+      const cardH = 1350;
 
-      // Draw Polaroid Card
+      // Draw Polaroid Card with Pattern
       ctx.save();
-      ctx.fillStyle = "white";
+      // Card Shadow
       ctx.shadowColor = "rgba(0,0,0,0.1)";
-      ctx.shadowBlur = 30;
-      ctx.shadowOffsetY = 15;
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetY = 10;
+      ctx.fillStyle = "#ffffff";
       roundedRect(ctx, cardX, cardY, cardW, cardH, 20);
       ctx.fill();
       ctx.restore();
 
+      // Simple Floral Pattern on Card Corners
+      const drawFlower = (fx: number, fy: number) => {
+        ctx.fillStyle = "#fecdd3"; // rose-200
+        for (let i = 0; i < 5; i++) {
+          ctx.beginPath();
+          ctx.arc(fx + Math.cos(i * 1.2) * 15, fy + Math.sin(i * 1.2) * 15, 12, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = "#fb7185"; // rose-400
+        ctx.beginPath();
+        ctx.arc(fx, fy, 8, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      drawFlower(cardX + 60, cardY + 60);
+      drawFlower(cardX + cardW - 60, cardY + 60);
+      drawFlower(cardX + 60, cardY + cardH - 240);
+      drawFlower(cardX + cardW - 60, cardY + cardH - 240);
+
       // Photo inside Polaroid
-      const pPadding = 60;
+      const pPadding = 70;
       const pW = cardW - pPadding * 2;
-      const pH = 1000;
+      const pH = 900;
       const pX = cardX + pPadding;
-      const pY = cardY + pPadding;
+      const pY = cardY + pPadding + 40;
 
       await drawPhoto(photos[0], pX, pY, pW, pH, true);
 
-      // Romantic Note on Polaroid
-      ctx.fillStyle = textColor;
-      ctx.font = "italic 48px serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Special Moments with You", canvas.width / 2, cardY + pH + 180);
+      // Washi Tape Effect
+      ctx.save();
+      ctx.fillStyle = "rgba(251, 113, 133, 0.4)"; // rose-400 translucent
+      ctx.rotate(-0.05);
+      ctx.fillRect(cardX + 40, cardY + 10, 180, 50);
+      ctx.restore();
 
-      // Extra Decorative Hearts
-      const drawHeart = (x: number, y: number, size: string) => {
-        ctx.font = size;
-        ctx.fillText("💖", x, y);
-      };
-      drawHeart(150, 250, "60px serif");
-      drawHeart(930, 350, "50px serif");
-      drawHeart(120, 1550, "70px serif");
-      drawHeart(950, 1500, "55px serif");
+      ctx.save();
+      ctx.fillStyle = "rgba(251, 113, 133, 0.4)";
+      ctx.translate(cardX + cardW - 40, cardY + 10);
+      ctx.rotate(0.05);
+      ctx.fillRect(-180, 0, 180, 50);
+      ctx.restore();
+
+      // Note
+      ctx.fillStyle = "#e11d48";
+      ctx.font = "italic bold 42px serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Special Moments", canvas.width / 2, cardY + pH + 200);
+
+      // Hearts on Card
+      ctx.font = "50px serif";
+      ctx.fillText("❤️", cardX + 80, cardY + cardH - 100);
+      ctx.fillText("❤️", cardX + cardW - 80, cardY + cardH - 100);
+      ctx.fillText("✨", cardX + cardW / 2, cardY + cardH - 60);
     } else {
       // ===== DESKTOP : 3 STRIP =====
       const photoWidth = 840;
